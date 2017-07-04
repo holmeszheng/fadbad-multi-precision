@@ -1,0 +1,52 @@
+% !TEX root = Report.tex
+
+\chapter{Overview of MPFR}\label{ch:mpfr}
+MPFR, short for  Multiple Precision Floating-Point Reliable Library, is a portable library written in C for arbitrary precision arithmetic on floating-porint numbers. It is based on the GMP library, aiming to provide a class of floating-point numbers with precise semantics.
+
+We cover a series of basic functions which we use in the multi-precision extension in the \FADBADpp package to be discussed in Chapter \CHref{extension}. For more details regarding the GNU MPFR library, please read the official GNU MPFR manual \cite{MPFRman}.
+
+
+\section{MPFR library functions}
+\subsection{Initialization Functions}
+A {\tt mpfr\_t} object must be initialized before storing the first value in it.
+\begin{center}
+\texttt{void mpfr\_init2 (mpfr\_t x, mpfr\_prec\_t prec)}
+\end{center}
+initializes x, sets its precision to the default precision, and sets its value to NaN.
+\begin{center}
+	\texttt{void mpfr\_init (mpfr\_t x)}
+\end{center}
+initializes x, sets its precision to be exactly \texttt{prec} bits and its value to NaN.
+\begin{center}
+	\texttt{void mpfr\_clear (mpfr\_t x)}
+\end{center}
+This function should be called when a {\tt mpfr\_t} variable is not used any more.
+\subsection{Arithmetic Functions}
+A series of arithmetic functions are given in the MPFR library to process corresponding arithmetic operations for {\tt mpfr\_t} type variables. In these arithmetic functions, a parameter needs to be set for the rounding mode. For example:
+
+\texttt{int mpfr\_add (mpfr\_t rop, mpfr\_t\_op1, mpfr\_t\_op2, mpfr\_rnd\_t rnd)}
+
+gets the addition of two {\tt mpfr\_t} variables and stores the result in the first parameter. Rounding mode needs to be set in the parameter rnd.
+
+\texttt{int mpfr\_sqr (mpfr\_t\_rop, mpfr\_t\_op, mpfr\_rnd\_t rnd)}
+
+\texttt{int mpfr\_sin (mpfr\_t\_rop, mpfr\_t op, mpfr\_rnd\_t rnd)}
+
+Some functions like these two above are used to get the square root or sin value of a {\tt mpfr\_t} variable.
+
+\subsection{Default Precision and Default Rounding Mode}
+\subsubsection{Default Precision Setting}
+\texttt{void mpfr\_set\_default\_prec (mpfr\_prec\_t prec)}
+
+sets the default precision to be exactly \texttt{prec} bits, where \texttt{prec} can be any integer between \texttt{MPFR\_PREC\_MIN} and \texttt{MPFR\_PREC\_MAX}. The precision of a variable means the number of bits used to store its significand. The default precision is set to 53 bits initially.
+\subsubsection{Default Rounding Mode Setting}
+\texttt{void mpfr\_set\_default\_rounding\_mode (mpfr\_rnd\_t rnd)}
+
+sets the default rounding mode to \texttt{rnd}, using one of the rounding mode: \texttt{MPFR\_RNDN}, \texttt{MPFR\_RNDZ}, \texttt{MPFR\_RNDU}, \texttt{MPFR\_RNDD},and \texttt{MPFR\_RNDA}. The default rounding mode is to nearest initially.
+
+\section{MPFR C++}\label{sc:mpfrcpp}
+
+Since MPFR library is written in C, it does not support the C++ features like class constructor, destructor and overloaded operators etc. To make it compatible with the AD templates in the FADBAD++ package, a C++ interface or a wrapper for MPFR is required.
+
+MPFR C++ written by Pavel Holoborodko uses a modern C++ design with coverage of classes, templates and function objects. The class wrapping the GNU MPFR library is defined in the header file \texttt{mpreal.h} and named \mpreal, which is to be used in the multiple-precision extension to the FADBAD++ package \cite{mpfrcpp}.
+

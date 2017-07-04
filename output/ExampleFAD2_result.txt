@@ -1,0 +1,17 @@
+-----------------------------------------------
+Computed in double precision, 
+output in 15 digits
+f       = 1.01312432251662
+df/d0th = 1.69631991278333
+df/d1th = 0.473201458438403
+-----------------------------------------------
+Computed in MPFR precision 128 digs
+output in 15 digits
+f       = 1.01312432251662
+df/d0th = 1.69631991278333
+df/d1th = 0.473201458438403
+-----------------------------------------------
+Errors between double and MPFR precision 128
+fval   : 4.5637e-17
+df/d0th: 8.5219e-17
+df/d1th: 2.5721e-17

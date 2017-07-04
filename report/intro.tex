@@ -1,0 +1,44 @@
+% !TEX root = Report.tex
+
+\chapter{Introduction}
+Automatic differentiation (AD) is a set of techniques to evaluate numerically the derivative of a function specified by a computer program. AD exploits the fact that every computer program, no matter how complicated, executes a sequence of elementary arithmetic operations (addition, subtraction, multiplication, division) and elementary functions (exp, log, sin, cos, etc.) \cite{wikiAD}. By applying the chain rule repeatedly to these operations, derivatives of arbitrary order can be computed automatically, and accurately to the working precision \cite{Griewank2008}.
+
+The \FADBADpp package developed by Ole Stauning and Claus Bendtsen implements the forward, backward, and Taylor modes utilizing \Cpp templates and overloaded operators. It enables users to differentiate functions that are implemented in built-in \Cpp arithmetic types (such as double) or other customized class types. The package consists of four files: \fadbad defines elementary functions inside, \fadiff defines a template \Fn to implement the forward mode, \badiff defines a template \Bn to implement the backward mode, and \tadiff defines a template \Tn  to implement the Taylor mode.
+
+To extend to multiple precision the forward and Taylor modes in the original \FADBADpp package, we need a library capable of processing computation on multi-precision floating-point numbers. In our work, we use \MPFR (Multiple Precision Floating-Point Reliable Library), a portable library written in C for arbitrary precision arithmetic on floating-point numbers. However, the \FADBADpp package utilizes templates which require built-in \Cpp types or customized class types. Therefore we resort to \MPFRCpp, a wrapper for the \MPFR library that implements constructors, destructors, overloaded operators, and other \Cpp features.The class in the wrapper \MPFRCpp is named \mpreal. 
+
+Many elementary functions in \fadbad, such as \texttt{mySin},  \texttt{myCos}, and \texttt{myExp},  use the corresponding functions  \texttt{sin},  \texttt{cos}, and \texttt{exp}, defined in \texttt{math.h}. However, these functions in the C numerics library {\tt math.h} only support built-in types in \Cpp such as float and double, but do not support \mpreal. Provided we have overloaded these elementary functions in the specialized operation struct in \fadbad, we could use the \mpreal class directly into the forward, backward, and Taylor series templates in the \FADBADpp package without doing any changes. But if we did that, there would be another deficiency: many temporary objects will be created from that. We will discuss the details in Chapter \CHref{extension}.
+
+%all the overloaded operators functions defined in the \mpreal class return a class type \mpreal instead of a pointer or a reference, which means if we use the overloaded operators directly in the \FADBADpp package, it will create some temporary objects and it will be more a disaster if the overloaded operators is used in a nested loop.  To make the \FADBADpp package compatible with the \mpreal class, we need to modify the original \FADBADpp functions.
+
+This report consists of four parts.
+\begin{enumerate}
+\item Summary of the \FADBADpp package
+  
+Chapter \CHref{summary} briefly introduces the mechanism of the \FADBADpp package, including the header file \fadbad, where universal elementary functions are defined, the header files \fadiff and \tadiff, where template classes for the forward and Taylor modes are defined.
+
+\item Overview of \MPFR
+
+Chapter \CHref{mpfr} gives an overview of the GNU \MPFR library to introduce how it can be used to deal with multi-precision computation. Furthermore, we will give an introduction to \MPFRCpp, a \Cpp wrapper for the \MPFR library.
+ 
+\item Multi-precision extension in the \FADBADpp package
+  
+Chapter \CHref{extension} explains how to extend \FADBADpp to multiple precision. We will discuss issues about temporary objects construction if we use the \mpreal class directly in \FADBADpp templates. Then, we will show details regarding the extension step by step.
+\item Examples
+  
+In Chapter \CHref{examples}, we will give several examples as a guide to show how to use the multi-precision feature in the modified \FADBADpp package.
+\end{enumerate} 
+
+%\renewcommand{\CHref}[1]{Chapter~\ref{ch:#1}}
+%\TGN{
+%\CHref{summary} briefly introduces \ldots
+
+%\CHref{mpfr} gives an overview of the GNU \MPFR library. \ldots
+
+%\CHref{extension} explains how to extend \FADBADpp to multiple precision. \ldots
+
+%\CHref{examples} gives examples on how to use our modified \FADBADpp package. \ldots
+%}
+
+%\renewcommand{\CHref}[1]{\S\ref{ch:#1}}
+

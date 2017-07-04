@@ -1,0 +1,45 @@
+% !TEX root = Report.tex
+
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subfigure}
+\usepackage{tabu}
+\usepackage{booktabs}% for better rules in the table
+\usepackage{jrl_thesis}
+%\usepackage{fancyheadings}
+\usepackage{fancyhdr}
+% Control horizontal spacing on list of figures section
+\usepackage[subfigure]{tocloft}
+\cftsetindents{figure}{0em}{3.5em}
+\usepackage{amssymb}
+\usepackage{colortbl}
+\usepackage{caption}
+\usepackage{setspace}               % this package defines the spacing of your thesis and should be included
+\include{definitions}               % your information goes here
+\usepackage{listings}
+\usepackage{color}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{url}
+\usepackage{xspace}
+
+\definecolor{keywordcolor}{rgb}{0.8,0.1,0.5}
+
+\lstset{
+	breaklines,
+	extendedchars=false,
+	language=C++,
+	keywordstyle=\color{keywordcolor} \bfseries, 
+	%identifierstyle=\bf,
+	basicstyle=\singlespacing\tt\small,
+	emptylines=0, 
+	commentstyle=\color{blue} \textit,
+	stringstyle=\ttfamily, 
+	showstringspaces=false,
+	%frame=shadowbox, %边框
+	captionpos=b,
+	numbers=left,
+	emphstyle=\tt,
+	numberstyle=\tiny
+}
+

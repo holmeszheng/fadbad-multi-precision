@@ -1,0 +1,219 @@
+% !TEX root = Report.tex
+
+\chapter{Multi-precision extension in the \FADBADpp package}\label{ch:extension}
+In this chapter, we will first discuss how to specialize the templated struct \Op in \fadbad to enable us to use a user-defined class type \texttt{mpreal} instead of built-in C++ type like float and double in the AD templates in the \FADBADpp package. Then we will discuss the problem of temporary objects construction. Finally, we will show how we eliminate temporary objects in this multi-precision extension implementation. 
+\section{Specialization of the templated struct \Op in \textbf\texttt{fadbad.h}}\label{sc:opspecwithmpreal}
+The template classes in the original \FADBADpp package enable users to differentiate functions that are implemented in built-in C++ types, such as float and double. However, if we want to implement multi-precision in \FADBADpp, we need to use a user-defined class type, say \texttt{mpreal} which supports all the multi-precision operations in the GNU \MPFR library and modern C++ features.
+
+We need to specialize the template \Opn with the class \texttt{mpreal}. The operators used in the general template \Opn like ``{\tt +}'', ``{\tt +=}'', ``{\tt *}'' are all overloaded in the the class \texttt{mpreal}. 
+
+For example, the overloaded operator ``{\tt +=}'' is defined in the class \texttt{mpreal} as
+\begin{lstlisting}[numbers=none]
+inline mpreal& mpreal::operator+=(const mpreal& v)
+{
+	mpfr_add(mpfr_ptr(), mpfr_srcptr(), v.mpfr_srcptr(), mpreal::get_default_rnd());
+	MPREAL_MSVC_DEBUGVIEW_CODE;
+	return *this;
+}
+\end{lstlisting}
+If we have a statement {\tt x+=y}, where x and y are all \mpreal variables, it will call the overloaded operator ``{\tt +=}'' shown above. Since these operators are all overloaded, we could directly use them in the specialized {\tt Op<mpreal>}.
+
+As for elementary functions that have called corresponding elementary functions defined in the C numerics library {\tt math.h} like
+\begin{lstlisting}[numbers=none]
+static T mySin(const T &x) { return ::sin(x); }
+\end{lstlisting}
+we could see that \texttt{sin} is also overloaded in the class \texttt{mpreal} as
+\begin{lstlisting}[numbers=none]
+const mpreal sin(const mpreal& v, mp_rnd_t rnd_mode);
+\end{lstlisting}
+we could directly use the function \texttt{mpreal::sin} to replace the function {\tt::sin} defined in \texttt{math.h}.
+\begin{lstlisting}[numbers=none]
+Op<mpreal>::mysin(const mpreal &x) { return mpreal::sin(x); }
+\end{lstlisting}
+From the example above and based on the specialized templated struct {\tt Op<mpreal>}, we could directly replace built-in C++ types like float and double with the user-defined class {\tt mpreal} in the forward and Taylor mode template class as {\tt F<mpreal> and T<mpreal>}, and accomplish the multi-precision extension in the \FADBADpp package.
+\section{Temporary objects issue}
+However, we come to another problem, the incessant construction and destruction of temporary objects by using overloaded operators like ``{\tt +}'', ``{\tt -}'', ``{\tt *}'', and ``{\tt /}'', and elementary functions like {\tt mpreal::sin} in \texttt{mpreal} class. For example, consider the following code.
+\begin{lstlisting}[numbers=none]
+for(unsigned int i=0;i<10;++i)
+{
+	f = x / Op<T>::mySin(y);
+}
+\end{lstlisting}	
+If the data type of the variables f, x, and y is double, \texttt{Op<double>::mySin(y)} will be called to return a temporary result of type double and divide the double variable x for 10 times. However, if the data type of the variables f, x, and y is of type \texttt{mpreal}, circumstance seems to be more complicated, which involves construction and destruction of temporary objects.
+
+From the \texttt{mpreal.h}, we could see that the declaration for the overloaded operator $/$ is
+\begin{lstlisting}[numbers=none]
+const mpreal operator/(const mpreal& a, const mpreal& b);
+\end{lstlisting}
+\texttt{Op<mpreal>::mySin(y)} is called to return a temporary object of class \texttt{mpreal}. Then, this temporary object divides x and from the declaration above, the division will return another temporary object of class \texttt{mpreal} too, which will be assigned to the variable f. According to the C++ mechanism, a temporary object of a class will be constructed first and at the end of the statement, the temporary object will be destructed \cite{C++Primer}. Although it is a very neat way, these construction and destruction procedures will be iteratively executed 10 times. Hence, we would like to come up with a way to avoid unnecessary temporary objects from being constructed especially those in the loops or nested loops, which will be a severe performance hit.
+ 
+
+\section{Temporary objects elimination}
+In this section, we discuss how to avoid temporary objects in the loops from being generated.
+\subsection{Improving the specialized templated struct {\tt Op<mpreal>} in \textbf\texttt{fadbad.h}}
+In Section \SCref{opspecwithmpreal}, we used overloaded elementary functions defined in {\tt mpreal.h} to replace elementary functions defined in the C numerics library {\tt math.h}. But they will return temporary objects of the type {\tt mpreal}. Hence, we will discuss how to amend these functions to avoid returning temporary objects.
+\subsubsection{Adding Operation functions to replace direct use of overloaded operators defined in \textbf\texttt{mpreal.h}}
+First, we consider the use of overloaded operators ``{\tt +}'', ``{\tt -}'', ``{\tt *}'', and ``{\tt /}''. Suppose we have the statement
+$$x + y$$
+where x and y are all of type {\tt mpreal}. It will call the overloaded operator ``{\tt +}'' defined in {\tt mpreal.h}. The declaration of the overloaded operator ``{\tt +}'' defined in {\tt mpreal.h} is
+\begin{lstlisting}[numbers=none]
+const mpreal operator+(const mpreal& a, const mpreal& b)
+\end{lstlisting}
+It will always return a temporary variable of type \mpreal. Noticing that the declaration of the add operation function defined in the MPFR library is
+\begin{lstlisting}[numbers=none]
+int mpfr_add (mpfr_t rop , mpfr_t op1 , mpfr_t op2 , mpfr_rnd_t rnd )
+\end{lstlisting}
+
+
+The result is not returned as an object, but stored in the object the first parameter \texttt{rop} points to. Hence, this function does not return a temporary object of type \mpreal. Using this kind of arithmetic operation functions defined in the MPFR library directly will be an alternative way to replace the use of overloaded operators ``{\tt +}'', ``{\tt -}'', ``{\tt *}'', and ``{\tt /}'' defined in {\tt mpreal.h}.
+
+Here, we will add some functions for addition, subtraction, multiplication, and division in the specialized templated struct {\tt Op<mpreal>}, which will be used to replace the use of overloaded operators ``{\tt +}'', ``{\tt -}'', ``{\tt *}'', and ``{\tt /}'' defined in {\tt mpreal.h}.
+For example, the definition for the addition function in {\tt Op<mpreal>} to replace the use of overloaded operator ``{\tt +}'' is
+\begin{lstlisting}[numbers=none]
+  static void mpreal_add(mpreal &rop, const mpreal &op1, const double &op2, mpfr_rnd_t rnd = DEFAULT_RNDM)
+  {
+  	if (rop.get_prec() != DEFAULT_PREC)
+  	rop.set_prec(DEFAULT_PREC, DEFAULT_RNDM);
+  	mpfr_add_d(rop.mpfr_ptr(), op1.mpfr_ptr(), op2, rnd);
+  }
+\end{lstlisting}
+
+The result is returned through a pointer \texttt{rop} as the first parameter in this function instead of being returned as an object to avoid temporary objects from being generated. Inside the function, function {\tt mpf\_add\_d} is directly called to process the addition. Similar to other overloaded operators ``{\tt -}'', ``{\tt *}'', and ``{\tt /}'', we will add functions into {\tt Op<mpreal>} to process subtraction, multiplication and division without returning temporary objects.
+\subsubsection{Improving specialized elementary functions}
+We need to consider the use of the overloaded elementary functions defined in {\tt mpreal.h}, which will return temporary objects of type \mpreal. For example, the declaration of the overloaded \texttt{sin} function defined in {\tt mpreal.h} is
+\begin{lstlisting}[numbers=none]
+const mpreal sin(const mpreal& v, mp_rnd_t rnd_mode);
+\end{lstlisting}
+It will return the result as a temporary object of type \mpreal. Similar to the operator ``{\tt +}'', we could find a function in the MPFR library to have the same functionality.
+\begin{lstlisting}[numbers=none]
+int mpfr_sin (mpfr_t rop , mpfr_t op , mpfr_rnd_t rnd)
+\end{lstlisting}
+The result here is returned through the pointer \texttt{rop} as the first parameter. In this way does this function avoid temporary objects from being generated. Then, we replace all the overloaded elementary functions occurring in the specialized templated struct {\tt Op<mpreal>} with functions that have the same functionality defined in the MPFR library. For example,
+\begin{lstlisting}[numbers=none]
+Op<mpreal>::mysin(const mpreal &x) { return mpreal::sin(x); }
+\end{lstlisting}
+is amended to
+\begin{lstlisting}[numbers=none]
+  static void mpreal_sin(mpreal &rop, const mpreal &x, mpfr_rnd_t rnd = DEFAULT_RNDM)
+  {
+  if (rop.get_prec() != DEFAULT_PREC)
+  rop.set_prec(DEFAULT_PREC, DEFAULT_RNDM);
+  mpfr_sin(rop.mpfr_ptr(), x.mpfr_ptr(), rnd);
+  }
+\end{lstlisting}
+Similarly, we replace the functions such as {\tt cos}, {\tt tan}, {\tt exp}, {\tt log}, using the functions defined in the MPFR library directly.
+
+So far, all the functions in the specialized templated struct {\tt Op<mpreal>} do not return results as temporary objects.
+\subsection{Temporary objects elimination method in \textbf\texttt{fadiff.h}}
+We modify every templated elementary function in \fadiff.
+\begin{itemize}
+	\item As for all the templated elementary functions in \fadiff, we need to give a specialization for our user-defined data type \mpreal. Hence, when calling the functions with parameters of type \mpreal, the specialized elementary functions will be called instead of the general one. For example, the original declaration of the general templated \texttt{sin} function is
+\begin{lstlisting}[numbers=none]
+template <typename T>
+inline FTypeName<T, 0> sin(const FTypeName<T, 0>& a)
+\end{lstlisting}
+	We need to specialize this general template to our user-defined data type {\tt mpreal}. Then, the declaration becomes as
+\begin{lstlisting}[numbers=none]
+inline FTypeName<mpreal, 0> sin(const FTypeName<mpreal, 0>& a)
+\end{lstlisting}	
+	\item We replace the arithmetic operators ``{\tt +}'',``{\tt -}'', ``{\tt *}'', and ``{\tt /}'' and functions defined in the struct \texttt{Op<T>} with elementary functions defined in the specialized struct \texttt{Op<mpreal>} step by step and keep the precedence of all the operands in the statements. For example, suppose we have
+	
+	%{\textbf{In the Original sin function in fadiff.h}}
+	%\lstinputlisting[firstline=1980,lastline=1991]{\INCDIR/fadiff.h}
+	\begin{center}
+		{\tt a+b*Op<T>::sin(c)} 
+	\end{center}
+	In this statement, two main points should be paied attention to.
+	\begin{itemize}
+		\item Functions defined in \texttt{Op<T>} should be replaced with corresponding elementary functions defined in \texttt{Op<mpreal>}.
+		\item We should avoid the use of arithmetic operators ``{\tt +}'',``{\tt -}'', ``{\tt *}'', and ``{\tt /}'' and replace them with the corresponding elementary functions defined in the struct {\tt Op<mpreal>}. Meanwhile, we need to focus on the right precedence for all the operands.\\
+	\end{itemize}
+	After the modification, this statement is rewritten as
+\begin{lstlisting}[numbers=none]
+Op<mpreal>::mpreal_sin(TEMP_RESULT, c);
+Op<mpreal>::mpreal_mul(TEMP_RESULT1, b, TEMP_RESULT);
+OP<mpreal>::mpreal_add(TEMP_RESULT, a, TEMP_RESULT);
+\end{lstlisting}
+	To store indispensable temporary results among the calculations, we need to create several static variables of type \mpreal in advance. Empirically, two will be sufficient in our implementation. {\tt TEMP\_RESULT} and {\tt TEMP\_RESULT1} are two static variables of type \mpreal defined in advance in the struct {\tt Op<mpreal>}. By keeping the right precedence for all the operands and modifying the original statement step by step, {\tt TEMP\_RESULT} is the final result.
+	%\lstinputlisting[firstline=1993,lastline=2005]{\INCDIR/fadiff.h} 
+\end{itemize}
+\subsection{Temporary objects elimination method in \textbf\texttt{tadiff.h}}
+In tadiff.h, two main places will be modified.
+\begin{enumerate}
+	\item  We modify every arithmetic class in \tadiff like {\tt TTypeNameSIN} and {\tt TTypeNameEXP}.
+	\begin{itemize}
+		\item We specialize all the general arithmetic class templates like {\tt TTypeNameEXP<T, N>} with our user-defined data type mpreal. For example, The original declaration of our general arithmetic  class {\tt TTypeNamEXP} is
+\begin{lstlisting}[numbers=none]
+template <typename U, int N>
+struct TTypeNameEXP : public UnTTypeNameHV<U, N>
+\end{lstlisting}
+		Then we need to specialize this general template with our user-defined data type \mpreal. After the modification, the declaration of the specialized form is
+\begin{lstlisting}[numbers=none]
+template <int N>
+struct TTypeNameEXP : public UnTTypeNameHV<mpreal, N>
+\end{lstlisting}
+		\item In the virtual function \texttt{eval} defined in every class like \texttt{TTypeNameMUL<mpreal, N>, TTypeNamePOW<mpreal,N>} etc, similar to the modification in \fadiff, we replace operators such as $+, -, *, /$ and elementary functions defined in the struct \texttt{Op<T>} with corresponding functions from struct \texttt{Op<mpreal>}. For example, suppose we have this statement in the virtual function {\tt eval} in the class \texttt{TTypeNameEXP<mpreal,N>}.
+\begin{lstlisting}[numbers=none]
+Op<U>::mycadd(a, (Op<U>::myOne() - Op<U>::myInteger(j)}/ Op<U>::myInteger(i)) * b * c);
+\end{lstlisting}
+	%{\textbf{In the Original Exp class (eval function)}}
+	%\lstinputlisting[firstline=1860,lastline=1876]{\INCDIR/tadiff.h} 
+	Here is the precedence for all the operands in this statement.
+	\begin{itemize}
+	
+		\item \texttt{temp\_result1 = Op<U>::myInteger(j) / Op<U>::myInteger(i);}
+		\item \texttt{temp\_result2 = Op<U>::myOne() - temp\_result1;}
+		\item \texttt{temp\_result3 = temp\_result2 * b;}
+		\item \texttt{temp\_result4 = temp\_result3 * c;}
+		\item \texttt{a += tmep\_result4;}
+	\end{itemize}
+		Then, We replace all the arithmetic operators and functions defined in \texttt{Op<U>} with elementary functions defined in the specialized \texttt{Op<mpreal>}. Here is the modification for each step.
+	\begin{itemize}
+		\item \texttt{TEMP\_RESULT1 = (double)j/(double)i;}
+		\item \texttt{Op<mpreal>::mpreal\_sub(TEMP\_RESULT2, 1, TEMP\_RESULT1);}
+		\item \texttt{Op<mpreal>::mpreal\_mul(TEMP\_RESUL3, TEMP\_RESULT2, b);}
+		\item \texttt{Op<mpreal>::mpreal\_mul(TEMP\_RESULT4, TEMP\_RESUL3, c);}
+		\item \texttt{Op<mpreal>::myCadd(a, TEMP\_RESULT4);}
+	\end{itemize}
+	Since no more than two temporary results are used in the same function, we only need two static \mpreal objects defined in advance in the struct \texttt{Op<mpreal>}. Thus, the final version of the modification is\\\
+\begin{lstlisting}[numbers=none]
+TEMP_RESULT1 = (double)j/(double)i
+Op<mpreal>::mpreal_sub(TEMP_RESULT, 1, TEMP_RESULT1)
+Op<mpreal>::mpreal_mul(TEMP_RESUL1, TEMP_RESULT, b)
+Op<mpreal>::mpreal_mul(TEMP_RESULT, TEMP_RESUL1, c)
+Op<mpreal>::myCadd(a, TEMP_RESULT)
+\end{lstlisting}
+	where {\tt TEMP\_RESULT} and {\tt TEMP\_RESULT1} are static variables of data type \mpreal defined in advance in the templated struct {\tt Op<mpreal>}.
+	%{\textbf{In the Specialized Exp class (eval function)}}
+	%\lstinputlisting[firstline=1889,lastline=1910]{\INCDIR/tadiff.h}
+	\end{itemize}
+	\item We modify overloaded arithmetic operation functions (such as operator ``{\tt +}'', ``{\tt -}'', ``{\tt *}'', ``{\tt /}'' and {\tt sin}, {\tt cos}, {\tt exp} and so on) in tadiff.h.
+	
+	\begin{itemize}
+		\item As for all the template elementary functions in \fadiff, we need to give a specialization to our user-defined data type {\tt mpreal}. Hence, when calling the functions with parameters of type {\tt mpreal}, the specialized arithmetic operation functions will be called instead of the general ones. For example, the original declaration of the general arithmetic operation function template is
+\begin{lstlisting}[numbers=none]
+template <typename U, int N>
+TTypeName<U, N> exp(const TTypeName<U, N>& val)
+\end{lstlisting}	
+	Then, We specialize this general form to our user defined data type {\tt mpreal} as
+\begin{lstlisting}[numbers=none]
+template <int N>
+TTypeName<mpreal, N> exp(const TTypeName<mpreal, N>& val)
+\end{lstlisting}	
+		\item In these arithmetic operation functions in tadiff.h, any arithmetic operators or elementary functions defined within \texttt{Op<U>} used to evaluate the first item in Taylor expansions should be replaced with corresponding functions defined in \texttt{Op<mpreal>}. Temporary results from the evaluation should be stored first in the static \mpreal objects defined in the specialized struct \texttt{Op<mpreal>} before passed into a constructor. For example, suppose we have the following statement in {\tt exp}
+\begin{lstlisting}[numbers=none]
+new TTypeNameEXP<U, N>(Op<U>:: myExp(a));
+\end{lstlisting}			
+		where \texttt{a} is a variable of data type U.
+		
+		This statement is modified in the specialized function for our use-defined data type \mpreal as
+\begin{lstlisting}[numbers=none]
+Op<mpreal>::mpreal_exp(TEMP_RESULT, a);
+new TTypeNameExp<mpreal, N>(TEMP_RESULT);
+\end{lstlisting}		
+		where {\tt TEMP\_RESULT} is a static variable of data type \mpreal defined in advance in the templated struct {\tt Op<mpreal>}.
+		%\lstinputlisting[firstline=1917,lastline=1924]{\INCDIR/tadiff.h} 
+		%\textbf{The overloaded exp function after the modification.}
+		%\lstinputlisting[firstline=1926,lastline=1940]{\INCDIR/tadiff.h} 
+	\end{itemize}
+\end{enumerate}
